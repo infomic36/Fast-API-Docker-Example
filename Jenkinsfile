@@ -1,40 +1,54 @@
 pipeline {
-   agent any
+    agent any
 
-   stages {
-       stage('Clone') {
-           steps {
-               git branch: "main", url: "https://github.com/rhumbert1/Fast-API-Docker-Example.git"
-           }
-       }
+    environment {
+        DOCKER_IMAGE = 'yourusername/fastapi-app'
+    }
 
-        stage('Build') {
+    stages {
+        stage('Build Docker Image') {
             steps {
-                bat 'docker build -t fastapi-app .'
+                script {
+                    // Build Docker image for FastAPI application
+                    docker.build("${DOCKER_IMAGE}")
+                }
             }
         }
 
-        stage('Test') {
+        stage('Run Tests') {
             steps {
-                bat 'pytest > results.txt'
+                script {
+                    // Run the FastAPI container and execute tests inside it
+                    docker.image("${DOCKER_IMAGE}").inside {
+                        sh 'pytest tests/'
+                    }
+                }
             }
         }
 
-        stage('Deploy') {
+        stage('Push to Docker Registry') {
+            when {
+                branch 'main' // Only push when on the main branch
+            }
             steps {
-                bat 'docker run -d -p 8000:8000 fastapi-app'
+                script {
+                    docker.withRegistry('https://registry.hub.docker.com', 'docker-hub-credentials') {
+                        docker.image("${DOCKER_IMAGE}").push()
+                    }
+                }
             }
         }
     }
 
     post {
         always {
-            archiveArtifacts artifacts: 'results.txt', allowEmptyArchive: true
+            cleanWs()
+        }
+        success {
+            echo 'Build and tests completed successfully!'
         }
         failure {
-            mail to: 'developer@example.com',
-                 subject: 'Build failed in Jenkins',
-                 body: 'The Jenkins build has failed. Check the logs for more details.'
+            echo 'Build or tests failed. Check logs for details.'
         }
     }
 }
