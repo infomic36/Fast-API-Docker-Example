@@ -1,46 +1,32 @@
-# ---- Final Stage ----
-# Use a minimal, slim Python image for the final container
-FROM python:3.10-slim-bullseye AS final
+# Stage 1 : Builder stage
+FROM python:3.10-slim as builder
 
-# Install runtime dependencies (ca-certificates for SSL/TLS)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+# Set the working directory
+WORKDIR /usr/src/app
 
-# Set working directory
-WORKDIR /app
-
-# Copy requirements and install all dependencies directly to system Python
+# Copy only requirements to cache dependencies
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
 
-# Set a non-root user for security
-# Create a system group and user with no home directory
-RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser
+# Install dependencies in the builder stage
+RUN apt-get update && \
+    apt-get install -y gcc build-essential && \
+    pip install -r requirements.txt && \
+    rm -rf /var/lib/apt/lists/*
 
-# Create logs directory with proper permissions
-RUN mkdir -p /app/logs && chown -R appuser:appgroup /app/logs
-
-# Copy the application code
+# Copy the rest of the application files
 COPY . .
 
-# Change ownership of the app directory to the non-root user
-RUN chown -R appuser:appgroup /app
+# Stage 2 : Final stage
+FROM python:3.10-slim
 
-# Switch to the non-root user
-USER appuser
+# Set the working directory
+WORKDIR /use/src/app
 
-# Expose port 8000 (changed from 80 to avoid permission issues)
+# Copy dependencies from the builder stage
+COPY --from=builder /usr/src/app /usr/src/app
+
+# Expose the port the app runs on
 EXPOSE 8000
 
-# Set the Redis host from an environment variable
-ENV REDIS_HOST=redis-db
-ENV LOG_LEVEL=INFO
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/')" || exit 1
-
-# Run uvicorn server on port 8000
-# Note: No --reload in production!
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run the FastAPI app
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"] 
