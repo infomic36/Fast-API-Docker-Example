@@ -43,7 +43,7 @@ spec:
       - name: fastapi
         # Replace with your actual Docker image
         # Format: registry/image:tag
-        image: imarty/fast-api-docker-example:latest
+        image: infomic36/fast-api-docker-example:latest
         imagePullPolicy: Always
         ports:
         - containerPort: 8000
